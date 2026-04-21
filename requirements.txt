@@ -1,0 +1,21 @@
+# =============================================================================
+# NL-to-SQL: Python Dependencies
+# =============================================================================
+# Install: pip install -r requirements.txt
+# Python:  >= 3.11
+# =============================================================================
+
+# -- Core Framework -----------------------------------------------------------
+streamlit==1.56.0                # Web UI framework
+
+# -- Agent Pipeline -----------------------------------------------------------
+langgraph==1.1.8                 # Stateful agent graph orchestration
+langchain-core==1.3.0            # Base abstractions for LLM chains
+langchain-ollama==1.1.0          # Ollama integration for local LLM inference
+
+# -- Data & Validation --------------------------------------------------------
+pydantic==2.13.2                 # Data validation and settings management
+pandas==3.0.2                    # Tabular data display in Streamlit
+
+# -- Utilities ----------------------------------------------------------------
+python-dotenv==1.2.2             # Load environment variables from .env files

@@ -1,0 +1,28 @@
+# -- Virtual environment -------------------------------------------------------
+.venv/
+venv/
+env/
+
+# -- Python bytecode -----------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# -- Environment variables (secrets) ------------------------------------------
+.env
+
+# -- Database files (generated) ------------------------------------------------
+data/*.db
+
+# -- OS files ------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+
+# -- IDE files -----------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+Project_Documentation.txt
