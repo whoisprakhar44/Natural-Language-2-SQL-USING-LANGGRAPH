@@ -123,7 +123,7 @@ All settings are read from environment variables (or a `.env` file).
 | Variable          | Default                        | Description                        |
 |-------------------|--------------------------------|------------------------------------|
 | `OLLAMA_BASE_URL` | `http://localhost:11434`       | Ollama server address              |
-| `OLLAMA_MODEL`    | `qwen3.5:4b`                   | Model tag to use                   |
+| `OLLAMA_MODEL`    | `qwen3.5:2b`                   | Model tag to use                   |
 | `MAX_RETRIES`     | `3`                            | Maximum correction attempts        |
 | `DB_PATH`         | `data/sample.db`               | Path to the SQLite database        |
 | `TEMPERATURE`     | `0`                            | LLM temperature (0 = deterministic)|
@@ -153,4 +153,4 @@ Try these with the bundled sample e-commerce database:
 
 ## License
 
-MIT
+APACHE 2.0
