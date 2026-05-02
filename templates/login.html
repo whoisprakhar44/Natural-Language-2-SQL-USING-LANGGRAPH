@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block body_class %}login-page{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card glass-panel">
+        <h2 class="auth-title">Welcome Back</h2>
+        
+        <div class="auth-tabs">
+            <button class="tab-btn active" onclick="switchTab('login')">Login</button>
+            <button class="tab-btn" onclick="switchTab('signup')">Sign Up</button>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Login Form -->
+        <form id="login-form" class="auth-form active" method="POST" action="{{ url_for('login') }}">
+            <div class="input-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required placeholder="Enter your username">
+            </div>
+            <div class="input-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required placeholder="Enter your password">
+            </div>
+            <button type="submit" class="btn btn-primary">Login to Dashboard</button>
+        </form>
+
+        <!-- Signup Form -->
+        <form id="signup-form" class="auth-form" method="POST" action="{{ url_for('signup') }}">
+            <div class="input-group">
+                <label for="new_username">New Username</label>
+                <input type="text" id="new_username" name="username" required placeholder="Choose a username">
+            </div>
+            <div class="input-group">
+                <label for="new_password">New Password</label>
+                <input type="password" id="new_password" name="password" required placeholder="Create a password">
+            </div>
+            <button type="submit" class="btn btn-primary">Create Account</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block body_class %}app-page{% endblock %}
+
+{% block content %}
+<div class="layout-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <h2>NL to SQL</h2>
+        </div>
+        
+        <div class="sidebar-content">
+            <!-- Schema display removed per user request -->
+        </div>
+
+        <div class="sidebar-footer">
+            <a href="{{ url_for('logout') }}" class="btn btn-logout">Logout</a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="chat-container">
+            <!-- Chat history goes here -->
+            <div id="chat-history" class="chat-history"></div>
+        </div>
+
+        <div class="input-area">
+            <form id="query-form" class="query-form">
+                <input type="text" id="question" placeholder="Ask a question about your data..." required autocomplete="off">
+                <button type="submit" class="btn btn-send" id="send-btn">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                </button>
+            </form>
+        </div>
+    </main>
+</div>
+{% endblock %}

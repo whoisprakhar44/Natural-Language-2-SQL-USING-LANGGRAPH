@@ -24,9 +24,11 @@ prompt was removed to eliminate a full LLM round-trip):
 SYSTEM_PROMPT = (
     "You are a SQLite SQL generator. "
     "Output ONLY a single SELECT query. "
-    "No explanations. No markdown. No code fences. No commentary.\n"
+    "No explanations. No markdown. No commentary.\n"
     "Rules: only SELECT/WITH. Use only tables and columns from the schema. "
-    "Never DROP/DELETE/INSERT/UPDATE/ALTER/CREATE."
+    "Never DROP/DELETE/INSERT/UPDATE/ALTER/CREATE. "
+    "CRITICAL: Never generate multiple statements separated by semicolons. "
+    "If asked to summarize or count multiple tables, combine them into ONE query using UNION ALL."
 )
 
 # -- Generation prompt ---------------------------------------------------------

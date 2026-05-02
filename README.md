@@ -81,7 +81,7 @@ source .venv/bin/activate        # macOS / Linux
 pip install -e .
 
 # 4. Pull the LLM model (~3.5 GB download)
-ollama pull qwen3.5:4b
+ollama pull qwen3.5:2b
 
 # 5. Create the sample database
 python scripts/create_sample_db.py

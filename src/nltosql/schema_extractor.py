@@ -43,7 +43,7 @@ def get_schema_json(db_path: str | None = None) -> str:
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     try:
         cursor = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
         )
 
         schema: dict[str, dict] = {}
