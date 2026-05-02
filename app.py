@@ -184,9 +184,7 @@ if run_clicked and question:
             else:
                 st.info("Query returned no results.")
 
-            if result.get("explanation"):
-                st.markdown("### Summary")
-                st.info(result["explanation"])
+
 
             if attempts > 1:
                 st.warning(

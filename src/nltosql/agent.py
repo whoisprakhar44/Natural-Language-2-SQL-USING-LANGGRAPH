@@ -1,11 +1,11 @@
 """
 LangGraph trial-and-error SQL agent.
 
-Defines the agent as a directed graph with five nodes and conditional
+Defines the agent as a directed graph with four nodes and conditional
 edges.  The key design element is the **cycle** from ``handle_error``
 back to ``generate_sql``, which implements the self-correction loop:
 
-    START --> generate_sql --> validate_sql --> execute_sql --> explain_result --> END
+    START --> generate_sql --> validate_sql --> execute_sql --> END
                   ^                |                |
                   |           handle_error <--------+
                   |                |
@@ -14,33 +14,89 @@ back to ``generate_sql``, which implements the self-correction loop:
 Each node reads from and writes to a shared ``AgentState`` dictionary.
 The conditional-edge functions inspect the state to decide which node
 to visit next, forming the trial-and-error loop.
+
+Performance notes (optimised for 2B models on 8GB M1):
+    - The ``explain_result`` node has been REMOVED. It was a full extra
+      LLM call just to summarise results the user can already see.
+      This cuts the happy-path from 2 LLM calls down to 1.
+    - ``num_predict`` is capped at 256 tokens to prevent the model
+      from rambling after generating the SQL.
+    - Schema is passed as compact JSON instead of verbose DDL.
 """
 
+import json
 import time
+import urllib.request
 from typing import Any, TypedDict
 
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_ollama import ChatOllama
 from langgraph.graph import END, START, StateGraph
 
 from nltosql.config import MAX_RETRIES, OLLAMA_BASE_URL, OLLAMA_MODEL, TEMPERATURE
 from nltosql.db_manager import execute_query
 from nltosql.prompts import (
     CORRECTION_PROMPT,
-    EXPLANATION_PROMPT,
     GENERATION_PROMPT,
     SYSTEM_PROMPT,
 )
-from nltosql.schema_extractor import get_schema_ddl
+from nltosql.schema_extractor import get_schema_json
 from nltosql.sql_validator import clean_llm_sql, validate_sql
 
-# -- LLM client (initialised once, reused across invocations) -----------------
 
-_llm = ChatOllama(
-    model=OLLAMA_MODEL,
-    temperature=TEMPERATURE,
-    base_url=OLLAMA_BASE_URL,
-)
+# -- Direct Ollama API client -------------------------------------------------
+# ChatOllama (langchain_ollama v1.1.0) does NOT support the ``think``
+# parameter that qwen3 models use to toggle internal reasoning.  Without
+# ``think: false``, the model spends ~15-20s generating invisible
+# chain-of-thought tokens before producing the actual SQL.  By calling
+# the Ollama REST API directly, we get ~1-2s responses instead.
+
+
+def _call_ollama(system_prompt: str, user_prompt: str) -> str:
+    """Call the Ollama chat API directly with think=false.
+
+    Uses ``urllib.request`` (stdlib) instead of ``requests`` to avoid
+    adding an external dependency.
+
+    Args:
+        system_prompt: The system message content.
+        user_prompt:   The user message content.
+
+    Returns:
+        The model's response text.
+
+    Raises:
+        RuntimeError: If the API call fails.
+    """
+    payload = json.dumps({
+        "model": OLLAMA_MODEL,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "stream": False,
+        "think": False,
+        "options": {
+            "temperature": TEMPERATURE,
+            "num_predict": 256,
+        },
+    }).encode("utf-8")
+
+    url = f"{OLLAMA_BASE_URL}/api/chat"
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data.get("message", {}).get("content", "")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")[:200]
+        raise RuntimeError(
+            f"Ollama API error (HTTP {exc.code}): {body}"
+        ) from exc
 
 
 # =============================================================================
@@ -57,7 +113,7 @@ class AgentState(TypedDict):
     """
 
     question: str                     # User's natural-language question
-    schema_ddl: str                   # CREATE TABLE statements for the target DB
+    schema_json: str                  # Compact JSON schema for the target DB
     generated_sql: str                # Most recent SQL attempt
     sql_valid: bool                   # Whether the last validation passed
     execution_success: bool           # Whether the last execution succeeded
@@ -66,7 +122,6 @@ class AgentState(TypedDict):
     attempt: int                      # Number of attempts made so far
     max_attempts: int                 # Upper bound on retries
     agent_log: list[dict[str, Any]]   # Step-by-step trace for the UI
-    explanation: str                  # Plain-English summary of the results
     db_path: str                      # Path to the active database file
 
 
@@ -88,7 +143,7 @@ def generate_sql_node(state: AgentState) -> dict[str, Any]:
 
     if attempt == 0:
         prompt = GENERATION_PROMPT.format(
-            schema=state["schema_ddl"],
+            schema=state["schema_json"],
             question=state["question"],
         )
         log.append(_log_entry("generate", "working",
@@ -96,7 +151,7 @@ def generate_sql_node(state: AgentState) -> dict[str, Any]:
     else:
         # Retry: include previous SQL and error for self-correction.
         prompt = CORRECTION_PROMPT.format(
-            schema=state["schema_ddl"],
+            schema=state["schema_json"],
             question=state["question"],
             previous_sql=state.get("generated_sql", ""),
             error=state.get("error_message", "Unknown error"),
@@ -104,12 +159,9 @@ def generate_sql_node(state: AgentState) -> dict[str, Any]:
         log.append(_log_entry("fix", "working",
                               f"Fixing SQL (attempt {attempt + 1}/{state['max_attempts']})..."))
 
-    response = _llm.invoke([
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=prompt),
-    ])
+    response_text = _call_ollama(SYSTEM_PROMPT, prompt)
 
-    sql = clean_llm_sql(response.content)
+    sql = clean_llm_sql(response_text)
     elapsed = round(time.time() - start_time, 1)
     log.append(_log_entry("generated", "success",
                           f"SQL generated in {elapsed}s", sql=sql))
@@ -170,31 +222,6 @@ def execute_sql_node(state: AgentState) -> dict[str, Any]:
         }
 
 
-def explain_result_node(state: AgentState) -> dict[str, Any]:
-    """Produce a natural-language summary of the query results."""
-    log = list(state.get("agent_log", []))
-
-    # Limit the preview sent to the LLM to avoid exceeding context.
-    preview = state["results"][:20]
-    results_text = str(preview)
-    if len(state["results"]) > 20:
-        results_text += f"\n... and {len(state['results']) - 20} more rows"
-
-    prompt = EXPLANATION_PROMPT.format(
-        question=state["question"],
-        sql=state["generated_sql"],
-        results=results_text,
-    )
-    response = _llm.invoke([
-        SystemMessage(content="You are a helpful data analyst. Provide clear, concise summaries."),
-        HumanMessage(content=prompt),
-    ])
-
-    log.append(_log_entry("explain", "success",
-                          "Generated plain-English explanation"))
-    return {"explanation": response.content, "agent_log": log}
-
-
 def handle_error_node(state: AgentState) -> dict[str, Any]:
     """Record the error and prepare state for a potential retry.
 
@@ -220,7 +247,8 @@ def _route_after_validation(state: AgentState) -> str:
 
 def _route_after_execution(state: AgentState) -> str:
     """Decide the next node after SQL execution."""
-    return "explain_result" if state.get("execution_success") else "handle_error"
+    # On success, go directly to END -- no explanation LLM call needed.
+    return END if state.get("execution_success") else "handle_error"
 
 
 def _route_retry_or_end(state: AgentState) -> str:
@@ -248,11 +276,10 @@ def _build_agent() -> Any:
     """
     graph = StateGraph(AgentState)
 
-    # -- Nodes --
+    # -- Nodes (4 instead of 5 -- explain_result removed) --
     graph.add_node("generate_sql", generate_sql_node)
     graph.add_node("validate_sql", validate_sql_node)
     graph.add_node("execute_sql", execute_sql_node)
-    graph.add_node("explain_result", explain_result_node)
     graph.add_node("handle_error", handle_error_node)
 
     # -- Edges --
@@ -267,10 +294,8 @@ def _build_agent() -> Any:
     graph.add_conditional_edges(
         "execute_sql",
         _route_after_execution,
-        {"explain_result": "explain_result", "handle_error": "handle_error"},
+        {END: END, "handle_error": "handle_error"},
     )
-
-    graph.add_edge("explain_result", END)
 
     # The retry cycle: handle_error --> generate_sql (if retries remain).
     graph.add_conditional_edges(
@@ -303,7 +328,6 @@ def run_agent(question: str, db_path: str | None = None) -> dict[str, Any]:
             success     -- bool
             sql         -- final SQL string (may be empty on failure)
             data        -- list of row dicts
-            explanation -- plain-English summary
             attempts    -- number of LLM invocations used
             agent_log   -- list of step dicts for the UI
             error       -- error string (empty on success)
@@ -311,14 +335,13 @@ def run_agent(question: str, db_path: str | None = None) -> dict[str, Any]:
     from nltosql.config import DB_PATH as default_db_path
 
     effective_path = db_path or default_db_path
-    schema_ddl = get_schema_ddl(effective_path)
+    schema_json = get_schema_json(effective_path)
 
-    if not schema_ddl:
+    if not schema_json:
         return {
             "success": False,
             "sql": "",
             "data": [],
-            "explanation": "",
             "attempts": 0,
             "agent_log": [
                 _log_entry("error", "error",
@@ -329,7 +352,7 @@ def run_agent(question: str, db_path: str | None = None) -> dict[str, Any]:
 
     initial_state: AgentState = {
         "question": question,
-        "schema_ddl": schema_ddl,
+        "schema_json": schema_json,
         "generated_sql": "",
         "sql_valid": False,
         "execution_success": False,
@@ -338,7 +361,6 @@ def run_agent(question: str, db_path: str | None = None) -> dict[str, Any]:
         "attempt": 0,
         "max_attempts": MAX_RETRIES,
         "agent_log": [],
-        "explanation": "",
         "db_path": effective_path,
     }
 
@@ -349,7 +371,6 @@ def run_agent(question: str, db_path: str | None = None) -> dict[str, Any]:
             "success": False,
             "sql": "",
             "data": [],
-            "explanation": "",
             "attempts": 0,
             "agent_log": [
                 _log_entry("error", "error", f"Agent error: {exc}")
@@ -361,7 +382,6 @@ def run_agent(question: str, db_path: str | None = None) -> dict[str, Any]:
         "success": final.get("execution_success", False),
         "sql": final.get("generated_sql", ""),
         "data": final.get("results", []),
-        "explanation": final.get("explanation", ""),
         "attempts": final.get("attempt", 0),
         "agent_log": final.get("agent_log", []),
         "error": final.get("error_message", "") if not final.get("execution_success") else "",

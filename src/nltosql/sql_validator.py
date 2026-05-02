@@ -108,11 +108,12 @@ def validate_sql(sql: str, db_path: str | None = None) -> ValidationResult:
 
 
 def clean_llm_sql(sql: str) -> str:
-    """Strip markdown code fences and trailing semicolons from LLM output.
+    """Strip markdown fences, think tags, and trailing semicolons from LLM output.
 
     LLMs sometimes wrap their output in triple-backtick code blocks even
-    when instructed not to.  This helper normalises the string so that
-    downstream consumers receive clean SQL.
+    when instructed not to.  qwen3 models may also emit ``<think>`` blocks
+    even when ``/no_think`` is used.  This helper normalises the string so
+    that downstream consumers receive clean SQL.
 
     Args:
         sql: Raw LLM output string.
@@ -120,6 +121,17 @@ def clean_llm_sql(sql: str) -> str:
     Returns:
         Cleaned SQL string.
     """
+    sql = sql.strip()
+
+    # Remove <think>...</think> blocks (qwen3 reasoning output).
+    sql = re.sub(r"<think>.*?</think>", "", sql, flags=re.DOTALL)
+
+    # Remove stray closing </think> tags (when opening tag was suppressed).
+    sql = re.sub(r"</think>", "", sql)
+
+    # Remove /no_think if it leaked into the output.
+    sql = sql.replace("/no_think", "")
+
     sql = sql.strip()
 
     # Remove fenced code blocks.
