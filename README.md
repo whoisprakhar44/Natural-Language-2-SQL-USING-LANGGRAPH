@@ -21,9 +21,10 @@ Convert natural-language questions into SQL queries using an AI agent that
 |------------------|---------------------------------|
 | Agent framework  | LangGraph 1.x                   |
 | LLM              | Qwen 3.5 (2B) via Ollama        |
-| UI               | Streamlit                        |
-| Database         | SQLite                           |
-| Language         | Python 3.13                      |
+| Backend          | Flask                           |
+| UI               | HTML5, CSS3, JavaScript         |
+| Database         | SQLite                          |
+| Language         | Python 3.13                     |
 
 ---
 
@@ -38,13 +39,21 @@ nltosql/
 │       ├── config.py           # Runtime settings (env vars)
 │       ├── db_manager.py       # SQLite connection and query helpers
 │       ├── prompts.py          # LLM prompt templates
-│       ├── schema_extractor.py # Database DDL extraction
+│       ├── schema_extractor.py # Database schema to JSON extractor
 │       └── sql_validator.py    # SQL safety and syntax validation
 ├── scripts/
 │   └── create_sample_db.py     # One-time script to seed demo data
 ├── data/
-│   └── sample.db               # Sample e-commerce database (generated)
-├── app.py                      # Streamlit UI (entry point)
+│   ├── sample.db               # Sample e-commerce database (generated)
+│   └── users.db                # User authentication database (generated)
+├── static/
+│   ├── css/style.css           # Minimalist Glassmorphism styling
+│   └── js/main.js              # Frontend logic and API integration
+├── templates/
+│   ├── base.html               # Base HTML layout
+│   ├── index.html              # Main chat and SQL interface
+│   └── login.html              # User authentication screen
+├── app.py                      # Flask backend (entry point)
 ├── pyproject.toml              # Package metadata and build config
 ├── requirements.txt            # Pinned Python dependencies
 ├── .env                        # Local environment overrides (not committed)
@@ -90,10 +99,10 @@ python scripts/create_sample_db.py
 cp .env.example .env
 
 # 7. Start the application
-streamlit run app.py
+python app.py
 ```
 
-The Streamlit UI will open at **http://localhost:8501**.
+The Flask UI will open at **http://localhost:8501**.
 
 ---
 
